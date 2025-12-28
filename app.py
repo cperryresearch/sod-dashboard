@@ -6,6 +6,18 @@ import plotly.express as px
 
 st.set_page_config(page_title="SOD Dashboard", layout="wide")
 
+# --- Curated artifact paths (bundled with this repo) ---
+PR018_NPY = "data/pr018/compensated_trajectory.npy"
+
+@st.cache_data
+def load_pr018_xy(npy_path: str) -> pd.DataFrame:
+    arr = np.load(npy_path, allow_pickle=False)  # numeric array only
+    if arr.ndim != 2 or arr.shape[1] != 2:
+        raise ValueError(f"Expected shape (N,2) for x,y; got {arr.shape}")
+    df = pd.DataFrame(arr, columns=["x", "y"])
+    df.insert(0, "t", np.arange(len(df)))  # frame index as time for display
+    return df
+
 # --- Sidebar Navigation ---
 page = st.sidebar.radio("Navigate", ["SOD Dashboard", "Curated Case Studies"])
 
@@ -127,25 +139,37 @@ else:
 
     st.divider()
 
-    # Placeholder “fixed” trajectory for now (replace later with exported PR-018 artifacts)
-    st.subheader("Trajectory View (placeholder — fixed example)")
-    t = np.linspace(0, 10, 240)
-    x = np.cos(t) + 0.08*np.random.randn(len(t))
-    y = np.sin(t) + 0.08*np.random.randn(len(t))
-    traj_df = pd.DataFrame({"t": t, "x": x, "y": y})
+      # --- PR-018 artifact (locked) ---
+    st.subheader("Trajectory View (PR-018 — artifact)")
+
+    try:
+        traj_df = load_pr018_xy(PR018_NPY)
+    except Exception as e:
+        st.error(f"PR-018 artifact missing or unreadable: {PR018_NPY}\n\n{e}")
+        st.stop()
 
     st.plotly_chart(px.line(traj_df, x="x", y="y"), use_container_width=True)
 
+    st.divider()
     c1, c2 = st.columns(2, gap="large")
+
     with c1:
-        st.subheader("Speed vs Time (placeholder)")
-        speed = np.abs(np.gradient(x, t)) + np.abs(np.gradient(y, t))
-        st.plotly_chart(px.line(pd.DataFrame({"t": t, "speed": speed}), x="t", y="speed"), use_container_width=True)
+        st.subheader("Speed vs Time (display proxy)")
+        dx = np.gradient(traj_df["x"].to_numpy())
+        dy = np.gradient(traj_df["y"].to_numpy())
+        speed_proxy = np.sqrt(dx*dx + dy*dy)
+        speed_df = pd.DataFrame({"t": traj_df["t"], "speed": speed_proxy})
+        st.plotly_chart(px.line(speed_df, x="t", y="speed"), use_container_width=True)
+        st.caption("Proxy only (derived from plotted x,y). Not an engine output.")
 
     with c2:
-        st.subheader("Curvature vs Time (placeholder)")
-        curvature = np.abs(np.gradient(np.gradient(y, t), t))
-        st.plotly_chart(px.line(pd.DataFrame({"t": t, "curvature": curvature}), x="t", y="curvature"), use_container_width=True)
+        st.subheader("Curvature vs Time (display proxy)")
+        ddx = np.gradient(np.gradient(traj_df["x"].to_numpy()))
+        ddy = np.gradient(np.gradient(traj_df["y"].to_numpy()))
+        curvature_proxy = np.sqrt(ddx*ddx + ddy*ddy)
+        curv_df = pd.DataFrame({"t": traj_df["t"], "curvature": curvature_proxy})
+        st.plotly_chart(px.line(curv_df, x="t", y="curvature"), use_container_width=True)
+        st.caption("Proxy only. True SOD curvature will come from engine exports (locked).")
 
     st.subheader("State Timeline / Segmentation (placeholder)")
     st.caption("Reserved for SOD state labels once engine exports are wired in. Curated mode remains locked.")
